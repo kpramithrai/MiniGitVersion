@@ -119,6 +119,29 @@ std::string hash_object(const std::string& filepath) {
     return write_object("blob", content);
 }
 
+// NEW: Helper to read an object's raw content into memory without printing it
+std::string read_object(const std::string& sha1_hash) {
+    if (sha1_hash.length() != 40) return "";
+
+    std::string dir_name = sha1_hash.substr(0, 2);
+    std::string file_name = sha1_hash.substr(2);
+    fs::path object_path = fs::path(".mygit/objects") / dir_name / file_name;
+
+    if (!fs::exists(object_path)) return "";
+
+    std::ifstream file(object_path, std::ios::binary);
+    if (!file.is_open()) return "";
+
+    std::string raw_data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    size_t null_byte_pos = raw_data.find('\0');
+    if (null_byte_pos != std::string::npos) {
+        return raw_data.substr(null_byte_pos + 1);
+    }
+    return "";
+}
+
 // NEW: Reads a blob from the object database and prints its contents
 void cat_file(const std::string& sha1_hash) {
     // Hashes must be exactly 40 characters long
@@ -255,6 +278,69 @@ void commit(const std::string& message) {
     }
 }
 
+void print_log() {
+    // 1. Read the HEAD file to find the current branch
+    std::ifstream head_file(".mygit/HEAD");
+    if (!head_file.is_open()) {
+        std::cerr << "Fatal: Not a mygit repository.\n";
+        return;
+    }
+    
+    std::string head_ref;
+    std::getline(head_file, head_ref);
+    head_file.close();
+
+    // Parse out the "ref: " part to get the actual path
+    if (head_ref.find("ref: ") == 0) {
+        head_ref = head_ref.substr(5);
+    }
+
+    // 2. Read the branch file to get the latest commit hash
+    std::ifstream branch_file(".mygit/" + head_ref);
+    if (!branch_file.is_open()) {
+        std::cerr << "Fatal: No commits yet.\n";
+        return;
+    }
+
+    std::string current_commit_hash;
+    std::getline(branch_file, current_commit_hash);
+    branch_file.close();
+
+    // 3. Traverse the commit history loop
+    while (!current_commit_hash.empty()) {
+        std::string commit_content = read_object(current_commit_hash);
+        if (commit_content.empty()) {
+            std::cerr << "Fatal: Could not read commit object.\n";
+            break;
+        }
+
+        std::cout << "commit " << current_commit_hash << '\n';
+
+        // Very basic parsing to format the log nicely
+        std::istringstream stream(commit_content);
+        std::string line;
+        std::string parent_hash = "";
+
+        while (std::getline(stream, line)) {
+            if (line.empty()) {
+                // An empty line in a commit object means the message is starting
+                std::string message;
+                std::getline(stream, message);
+                std::cout << "\n    " << message << "\n\n";
+                break;
+            } else if (line.find("author ") == 0) {
+                std::cout << "Author: " << line.substr(7) << '\n';
+            } else if (line.find("parent ") == 0) {
+                // If this commit has a parent, save it for the next loop iteration
+                parent_hash = line.substr(7);
+            }
+        }
+        
+        // Move to the parent commit (if there is no parent, this ends the loop)
+        current_commit_hash = parent_hash;
+    }
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: ./mygit <command>\n";
@@ -285,12 +371,14 @@ int main(int argc, char* argv[]) {
     } else if (command == "write-tree") {
         std::cout << write_tree() << '\n';
     } else if (command == "commit") {
-        // NEW: Handle 'mygit commit -m "Message"'
         if (argc < 4 || std::string(argv[2]) != "-m") {
             std::cerr << "Usage: ./mygit commit -m \"<message>\"\n";
             return 1;
         }
         commit(argv[3]);
+    } else if (command == "log") {
+        // NEW: Route for the log command
+        print_log();
     }else {
         std::cerr << "Unknown command: " << command << '\n';
     }
