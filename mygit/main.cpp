@@ -87,7 +87,6 @@ void init_mygit() {
 }
 
 
-// UPDATED: Now incredibly clean thanks to our refactor!
 string hash_object(const string& filepath) {
     ifstream file(filepath, ios::binary);   //Does this open the file in binary and content has binary data??
     if (!file.is_open()) {
@@ -100,7 +99,7 @@ string hash_object(const string& filepath) {
     return write_object("blob", content);
 }
 
-// NEW: Helper to read an object's raw content into memory without printing it
+//Helper to read an object's raw content into memory without printing it
 string read_object(const string& sha1_hash) {
     if (sha1_hash.length() != 40) return "";
 
@@ -123,7 +122,7 @@ string read_object(const string& sha1_hash) {
     return "";
 }
 
-// NEW: Reads a blob from the object database and prints its contents
+//Reads a blob from the object database and prints its contents
 void cat_file(const string& sha1_hash) {
     // Hashes must be exactly 40 characters long
     if (sha1_hash.length() != 40) {
@@ -206,7 +205,7 @@ vector<TreeEntry> parse_tree_entries(const string& tree_content) {
 string write_tree() {
     vector<TreeEntry> entries;
 
-    for (const auto& entry : fs::directory_iterator(".")) {
+    for (const auto& entry : fs::directory_iterator(".")) {  //Looping through the current directory
         string filename = entry.path().filename().string();
         
         if (filename == ".mygit" || filename == "Makefile") {
